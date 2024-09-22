@@ -17,6 +17,8 @@ def main():
     startFromHere = "/Users/lorh/Desktop/Automated_Invoice/StartFromHere.xlsx"
     id, month, year, invDate = getDateAndID(startFromHere)
 
+    # parseData.load_spreadsheet_with_retry(id)
+
     baseInfoDict, dataDict = parseData.parseData(id, month, year)
 
 

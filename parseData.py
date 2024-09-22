@@ -1,74 +1,96 @@
 import ezsheets
 import re
+import time as timeBreak
 
 def parseData(id, month, year):
-    ss = ezsheets.Spreadsheet(id)
+    attempt = 0
+    retries = 3
+    delay = 3
 
-    rateDictDict = makeRateDictDict(ss)
+    while attempt < retries:
+        try:
+            print(f"Attempting to load spreadsheet, try {attempt + 1}")
+            ss = ezsheets.Spreadsheet(id)
+            print("Spreadsheet loaded successfully!")
 
-    datePat = rf"0?{month}/\d+/\d*{year%100}" # Can match 12/1/2024 and 12/1/24
-    ACDict = makeACDict(ss, datePat)
+            rateDictDict = makeRateDictDict(ss)
 
-    baseInfoDict = {}
-    dataDict = {}
-    for client, rowNum in ACDict.items():
-        sheet = ss[client]
+            datePat = rf"0?{month}/\d+/\d*{year%100}" # Can match 12/1/2024 and 12/1/24
+            ACDict = makeACDict(ss, datePat)
+
+            baseInfoDict = {}
+            dataDict = {}
+            for client, rowNum in ACDict.items():
+                sheet = ss[client]
+                
+                # baseInfoList contains [Name, Address1, Address2, Matter]
+                baseInfoDict[client] = makeBaseInfoList(sheet)
+
+                rateName = sheet["C4"]
+                rateDict = rateDictDict.get(rateName, rateDictDict["Latest"])
+                
+                dataDict[client] = []
+                # Start from the effective date entry row
+                row = sheet.getRow(rowNum)
+                while True:
+                    nameList = row[1].split("/") # Name column: Rudy/Ayaka, blank cell is acceptable
+                    name = nameList[0].replace(" ", "")
+                    name = name.upper()
+
+                    time = row[3].replace(" ", "")
+                    if time and time.replace(".", "", 1).isdigit():
+                        time = float(time)
+                        rate = rateDict.get(name, 0)
+                        dataDict[client].append([
+                            row[0], # Date
+                            row[2], # Activity
+                            time, # Time
+                            rate # Rate
+                            ])
+                    elif time and time[0].upper() == "F": # In case of Flat Fee
+                        dataDict[client].append([
+                            row[0], # Date
+                            row[2], # Activity
+                            "Flat Fee",
+                            0 # Rate
+                            ])
+                    elif time and time[len(time)- 1] == "?":
+                        dataDict[client].append([
+                            row[0], # Date
+                            row[2], # Activity
+                            float(time.replace("?", "")),
+                            rate # Rate
+                            ])
+                    else: # In case of Not Billed, or not digit, blank or anything else not starting with 'F' 
+                        dataDict[client].append([
+                            row[0], # Date
+                            row[2], # Activity
+                            "Not Billed", # Time
+                            0 # Rate
+                            ])
+                    
+                    rowNum += 1
+                    row = sheet.getRow(rowNum)
+                    if not row[0] and not row[2]: # If both Date and Work Progress are blank
+                        break
+
+                    if row[0] and not re.match(datePat, row[0]): # If there is a row, but that is for next month
+                        break
+
+            return baseInfoDict, dataDict
         
-        # baseInfoList contains [Name, Address1, Address2, Matter]
-        baseInfoDict[client] = makeBaseInfoList(sheet)
+        except Exception as e:
+            print(f"Error loading spreadsheet: {e}")
+            attempt += 1
+            if attempt < retries:
+                print(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+            else:
+                print("All retries failed. Exiting.")
+                raise
 
-        rateName = sheet["C4"]
-        rateDict = rateDictDict.get(rateName, rateDictDict["Latest"])
-        
-        dataDict[client] = []
-        # Start from the effective date entry row
-        row = sheet.getRow(rowNum)
-        while True:
-            nameList = row[1].split("/") # Name column: Rudy/Ayaka, blank cell is acceptable
-            name = nameList[0].replace(" ", "")
-            name = name.upper()
 
-            time = row[3].replace(" ", "")
-            if time and time.replace(".", "", 1).isdigit():
-                time = float(time)
-                rate = rateDict.get(name, 0)
-                dataDict[client].append([
-                    row[0], # Date
-                    row[2], # Activity
-                    time, # Time
-                    rate # Rate
-                    ])
-            elif time and time[0].upper() == "F": # In case of Flat Fee
-                dataDict[client].append([
-                    row[0], # Date
-                    row[2], # Activity
-                    "Flat Fee",
-                    0 # Rate
-                    ])
-            elif time and time[len(time)- 1] == "?":
-                dataDict[client].append([
-                    row[0], # Date
-                    row[2], # Activity
-                    float(time.replace("?", "")),
-                    rate # Rate
-                    ])
-            else: # In case of Not Billed, or not digit, blank or anything else not starting with 'F' 
-                dataDict[client].append([
-                    row[0], # Date
-                    row[2], # Activity
-                    "Not Billed", # Time
-                    0 # Rate
-                    ])
-            
-            rowNum += 1
-            row = sheet.getRow(rowNum)
-            if not row[0] and not row[2]: # If both Date and Work Progress are blank
-                break
-
-            if row[0] and not re.match(datePat, row[0]): # If there is a row, but that is for next month
-                break
-
-    return baseInfoDict, dataDict
+    
 
 def makeACDict(ss, datePat):
     ACDict = {}
@@ -129,6 +151,25 @@ def makeRateDict(sheet):
             rateDict[cell.upper()] = int(sheet[f"G{rowNum}"])
     
     return rateDict
+
+
+def load_spreadsheet_with_retry(spreadsheet_id, retries=3, delay=2):
+    attempt = 0
+    while attempt < retries:
+        try:
+            print(f"Attempting to load spreadsheet, try {attempt + 1}")
+            ss = ezsheets.Spreadsheet(spreadsheet_id)
+            print("Spreadsheet loaded successfully!")
+            return ss
+        except Exception as e:
+            print(f"Error loading spreadsheet: {e}")
+            attempt += 1
+            if attempt < retries:
+                print(f"Retrying in {delay} seconds...")
+                timeBreak.sleep(delay)
+            else:
+                print("All retries failed. Exiting.")
+                raise
 
 
 
