@@ -19,18 +19,18 @@ def main():
 
     # parseData.load_spreadsheet_with_retry(id)
 
-    baseInfoDict, dataDict = parseData.parseData(id, month, year)
-
-
+    baseInfoDict, dataDict, posRateRangeDict = parseData.parseData(id, month, year)
 
     print("Data parsing completed.\n")
     print("Making Invoices...\n")
 
     templatePath = "/Users/lorh/Desktop/Automated_Invoice/invoiceTemplate.xlsx"
     outputPath = f"/Users/lorh/Desktop/{MONTH_DICT[month]} {year} Invoices.xlsx"
+
+    # rateRangeDict = getRateRangeDict(startFromHere)
     
     makeInvoice.makeFile(templatePath, outputPath)
-    makeInvoice.makeInvoice(outputPath, baseInfoDict, dataDict, invDate)
+    makeInvoice.makeInvoice(outputPath, baseInfoDict, dataDict, invDate, posRateRangeDict)
 
     li = outputPath.split("/")
     invoiceName = li[-1].rstrip(".xlsx")
@@ -55,6 +55,28 @@ def getDateAndID(startFromHere):
         year -= 1
 
     return id, month, year, invDate
+
+def getRateRangeDict(startFromHere):
+    wb = openpyxl.load_workbook(startFromHere)
+    sheet = wb.active
+
+    rateRangeDict = {}
+
+    startRow = 8
+    title = sheet[f"A{startRow}"].value
+    while title:
+        fromRate = sheet[f"B{startRow}"].value
+        toRate = sheet[f"C{startRow}"].value
+
+        rateRangeDict[title] = []
+        rateRangeDict[title].append(fromRate)
+        rateRangeDict[title].append(toRate)
+        
+        startRow += 1
+        title = sheet[f"A{startRow}"].value
+
+    return rateRangeDict
+
 
 if __name__ == "__main__":
     main()

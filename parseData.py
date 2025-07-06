@@ -1,10 +1,11 @@
 import ezsheets
 import re
-import time as timeBreak
+import time as ti
+import copy
 
 def parseData(id, month, year):
     attempt = 0
-    retries = 3
+    retries = 5
     delay = 3
 
     while attempt < retries:
@@ -14,6 +15,8 @@ def parseData(id, month, year):
             print("Spreadsheet loaded successfully!")
 
             rateDictDict = makeRateDictDict(ss)
+            posRateRangeDict = makePositionRateRangeDict(ss)
+            print(posRateRangeDict)
 
             datePat = rf"0?{month}/\d+/\d*{year%100}" # Can match 12/1/2024 and 12/1/24
             ACDict = makeACDict(ss, datePat)
@@ -77,14 +80,14 @@ def parseData(id, month, year):
                     if row[0] and not re.match(datePat, row[0]): # If there is a row, but that is for next month
                         break
 
-            return baseInfoDict, dataDict
+            return baseInfoDict, dataDict, posRateRangeDict
         
         except Exception as e:
             print(f"Error loading spreadsheet: {e}")
             attempt += 1
             if attempt < retries:
                 print(f"Retrying in {delay} seconds...")
-                time.sleep(delay)
+                ti.sleep(delay)
             else:
                 print("All retries failed. Exiting.")
                 raise
@@ -153,24 +156,78 @@ def makeRateDict(sheet):
     return rateDict
 
 
-def load_spreadsheet_with_retry(spreadsheet_id, retries=3, delay=2):
-    attempt = 0
-    while attempt < retries:
-        try:
-            print(f"Attempting to load spreadsheet, try {attempt + 1}")
-            ss = ezsheets.Spreadsheet(spreadsheet_id)
-            print("Spreadsheet loaded successfully!")
-            return ss
-        except Exception as e:
-            print(f"Error loading spreadsheet: {e}")
-            attempt += 1
-            if attempt < retries:
-                print(f"Retrying in {delay} seconds...")
-                timeBreak.sleep(delay)
+def makeRateDictDict(ss):
+    for sheet in ss:
+        sheetName = sheet.title
+        sheetName.replace(" ", "")
+        if sheetName[:4].upper() == "RATE":
+            rateMaster = sheet
+            break
+    
+    nameList = []
+    nameRow = rateMaster.getRow(1)
+    startCol = 1
+    name = nameRow[startCol].upper()
+    while name:
+        nameList.append(name)
+        startCol += 1
+        name = nameRow[startCol].upper()
+
+    rateDictDict = {}
+    startRow = 2
+    rateRow = rateMaster.getRow(startRow)
+    rateName = rateRow[0]
+    while rateName:
+        rateDictDict[rateName] = {}
+        for colNum, name in enumerate(nameList, 1):
+            rateDictDict[rateName][name] = int(rateRow[colNum])
+        
+        startRow += 1
+        rateRow = rateMaster.getRow(startRow)
+        rateName = rateRow[0]
+    
+    return rateDictDict
+
+def makeRateDict(sheet):
+    rateDict = {}
+    columnF = sheet.getColumn("F") # Rates must be listed in column F (Name) and G (Rate).
+    for rowNum, cell in enumerate(columnF, 1):
+        if cell:
+            rateDict[cell.upper()] = int(sheet[f"G{rowNum}"])
+    
+    return rateDict
+
+def makePositionRateRangeDict(ss):
+    for sheet in ss:
+        sheetName = sheet.title
+        sheetName.replace(" ", "")
+        if sheetName[:4].upper() == "POSI":
+            positionMaster = sheet
+            break
+    
+    posRateRangeDict = {}
+
+    startRow = 2
+    posRow = positionMaster.getRow(startRow)
+    posName = posRow[0] # e.g. Managing Partner, Attorney Travel Time
+                        # Column is 0 indexed!!!
+    while posName:
+        if posRow[1]:
+            fromRate = int(posRow[1])
+            if posRow[2]:
+                toRate = int(posRow[2])
             else:
-                print("All retries failed. Exiting.")
-                raise
+                toRate = fromRate
+        
+        posRateRangeDict[posName] = [fromRate, toRate]
+        
+        startRow += 1
+        posRow = positionMaster.getRow(startRow)
+        posName = posRow[0] # e.g. Managing Partner, Attorney Travel Time
+                            # Column is 0 indexed!!!
+    return posRateRangeDict
 
 
+    
 
 
